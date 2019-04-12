@@ -16,7 +16,7 @@ const db = {
       name: "John",
       email: "john@gmail.com",
       password: "cookies",
-      entries: 0,
+      entries: 3,
       joined: new Date()
     },
     {
@@ -24,7 +24,7 @@ const db = {
       name: "Sally",
       email: "sally@gmail.com",
       password: "bananas",
-      entries: 0,
+      entries: 4,
       joined: new Date()
     }
   ]
@@ -40,8 +40,18 @@ app.get("/", (req, res) => {
 //Sign In Route
 app.post("/signin", (req, res) => {
 
+    const loggedUser = db.users[0].name;
+    const loggedUserEntries = db.users[0].entries;
+
     if(req.body.password === db.users[0].password && req.body.email === db.users[0].email){
-        return res.json("success")
+        return res.json({
+          status: "success",
+          name: loggedUser,
+          entries: loggedUserEntries,
+          id: db.users[0].id
+        })
+        //Also send Name of logged user
+        //Also send entries of logged user
     }
     else{
         return res.json("error")
@@ -88,9 +98,10 @@ app.get("/profile/:id", (req, res) => {
   }
 });
 
-app.post("/image", (req, res) => {
+app.put("/image", (req, res) => {
   const { id } = req.body;
   let found = false;
+  //Busco en la database el id del usuario que mando la solicitud de update de entries
   db.users.forEach(user => {
     if (user.id === id) {
       found = true;
@@ -99,7 +110,7 @@ app.post("/image", (req, res) => {
     }
   });
   if (!found) {
-    res.status(404).json("No such user.");
+    res.status(404).json("No such user");
   }
 });
 
