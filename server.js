@@ -2,135 +2,131 @@ const express = require("express");
 const bodyParser = require("body-parser");
 var cors = require("cors");
 const bcrypt = require("bcrypt");
+const knex = require("knex");
 const app = express();
+
+const db = knex({
+  client: "pg",
+  connection: {
+    host: "127.0.0.1",
+    user: "postgres",
+    password: "",
+    database: "facerecognitionapp"
+  }
+});
 
 // MIDDLEWARE
 app.use(bodyParser.json());
 app.use(cors());
 
-//DATABASE
-const db = {
-  users: [
-    {
-      id: "123",
-      name: "John",
-      email: "john@gmail.com",
-      password: "cookies",
-      entries: 3,
-      joined: new Date()
-    },
-    {
-      id: "124",
-      name: "Sally",
-      email: "sally@gmail.com",
-      password: "bananas",
-      entries: 4,
-      joined: new Date()
-    }
-  ]
-};
-
 //ROUTES
-
 //Home Route
 app.get("/", (req, res) => {
-  res.json(db.users);
 });
 
-//Sign In Route
+//Sign In Route || OK
 app.post("/signin", (req, res) => {
-
-    const loggedUser = db.users[0].name;
-    const loggedUserEntries = db.users[0].entries;
-
-    if(req.body.password === db.users[0].password && req.body.email === db.users[0].email){
-        return res.json({
-          status: "success",
-          name: loggedUser,
-          entries: loggedUserEntries,
-          id: db.users[0].id
-        })
-        //Also send Name of logged user
-        //Also send entries of logged user
-    }
-    else{
-        return res.json("error")
-    }
-  
+  db.select("email", "hash")
+    .from("login")
+    .where("email", "=", req.body.email)
+    .then(data => {
+      const isValid = bcrypt.compareSync(req.body.password, data[0].hash);
+      if (isValid) {
+        db.select("*")
+          .from("users")
+          .where("email", "=", req.body.email)
+          .then(user => {
+            res.json(user[0]);
+          })
+          .catch(err => {
+            res.status(400).json("Unable to get user.");
+          });
+      } else {
+        res.status(400).json("Wrong credentials");
+      }
+    })
+    .catch(err => {
+      res.status(400).json("Wrong credentials.");
+    });
 });
 
-//Register Route
+//Register Route || OK
 app.post("/register", (req, res) => {
-
   const { email, name, password } = req.body;
+  //Hago una transacción en la DB p/ condensar 2 manipulaciones en un solo stream
+  db.transaction(trx => {
+    //Hashing password syncronously inside the transaction async
+    const saltRounds = 10;
+    const plainPassword = password;
+    let salt = bcrypt.genSaltSync(saltRounds);
+    let hash = bcrypt.hashSync(plainPassword, salt);
 
-  let hashedPass = "";
-  //Hashing Pass
-  bcrypt.hash(password, 7, (err, hash) => {
-    // Store hash in your password DB.
-    err ? console.log(err, "Oops! Error hashing password.") : console.log(hash);
-    hashedPass = hash;
+    trx
+      //Add user to login table
+      .returning("email")
+      .insert({
+        hash: hash,
+        email: email
+      })
+      .into("login")
+      .then(returnedEmail => {
+        //Add user to login table
+        return trx
+          .returning("*")
+          .insert({
+            email: returnedEmail[0],
+            name: name,
+            joined: new Date()
+          })
+          .into("users")
+          .then(user => {
+            res.json(user[0]);
+          });
+      })
+      .then(trx.commit)
+      .catch(trx.rollback);
+  }).catch(err => {
+    res.status(400).json("Unable to register this user.");
   });
-
-  db.users.push({
-    id: "125",
-    name: name,
-    email: email,
-    entries: 0,
-    joined: new Date()
-  });
-
-  res.json(db.users[db.users.length - 1]);
-
 });
 
+//Profile Route || OK
 app.get("/profile/:id", (req, res) => {
   const { id } = req.params;
-  let found = false;
-  db.users.forEach(user => {
-    if (user.id === id) {
-      found = true;
-      return res.json(user);
-    }
-  });
-  if (!found) {
-    res.status(404).json("No such user.");
-  }
+  db.select("*")
+    .from("users")
+    .where({
+      id: id
+    })
+    .then(user => {
+      if (user.length) {
+        res.status(200).json(user[0]);
+      } else {
+        throw new Error("No such user");
+      }
+    })
+    .catch(() => {
+      res.status(400).json("Error retrieving the requested user.");
+    });
 });
 
+//Updating entries route || OK
 app.put("/image", (req, res) => {
   const { id } = req.body;
-  let found = false;
-  //Busco en la database el id del usuario que mando la solicitud de update de entries
-  db.users.forEach(user => {
-    if (user.id === id) {
-      found = true;
-      user.entries++;
-      return res.json(user.entries);
-    }
-  });
-  if (!found) {
-    res.status(404).json("No such user");
-  }
+
+  db("users")
+    .where("id", "=", id)
+    .increment("entries", 1)
+    .returning("entries")
+    .then(entries => {
+      res.json(entries[0]);
+    })
+    .catch(err => {
+      res.status(400).json("Unable to update entries");
+    });
 });
 
-//Server Listen / Start Server
+//Start Listen Server || OK
 app.listen(3000, () => {
   console.log("Server listening on port 3000");
 });
-
-/* 
-
-///////////////
-API PLANNING
-///////////////
-
-ROUTES:
-
-(/) -> GET res = this is working
-(/signin) -> POST = success, fail
-(/register) -> POST = user
-(/profile:userId) -> GET = user
-(/image) -> PUT = updated object
-
-*/
