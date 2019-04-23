@@ -26,7 +26,9 @@ app.use(cors());
 
 //ROUTES
 //Home Route
-app.get("/", (req, res) => {});
+app.get("/", (req, res) => {
+  res.status(200).json("Todo piola wach.")
+});
 
 //Sign In Route || OK
 app.post("/signin", (req, res) => {
@@ -46,6 +48,11 @@ app.get("/profile/:id", (req, res) => {
 //Updating entries route || OK
 app.put("/image", (req, res) => {
   image.handleImage(req, res, db);
+});
+
+//Register Route || OK
+app.post("/imageurl", (req, res) => {
+  image.handleApiCall(req, res);
 });
 
 //Start Listen Server || OK
